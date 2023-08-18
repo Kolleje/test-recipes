@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<!-- <div  style="display:none"> -->
+<script src="https://cdn.plot.ly/plotly-2.25.2.min.js" charset="utf-8"></script>
+<script type="module">
+	const equalss = '============================================================================';
+	import { io } from "https://cdn.socket.io/4.3.2/socket.io.esm.min.js";
+
+	const socket = io({ path: '/ws' });
+
+	async function request(req) {
+		return new Promise(r => socket.emit('request', req, r));
+	}
+
+	const regions = [];
+
+	async function getRecipes() {
+		const result = await request({ func: 'getRecipes' });
+		const select = document.getElementById('recipes');
+		for (const r of result) {
+			const option = document.createElement('option');
+			option.value = r.id;
+			option.innerHTML = r.name;
+			select.append(option)
+		}
+	}
+
+	async function getRegions() {
+		const result = await request({ func: 'getRegions' });
+		const regionDiv = document.getElementById('regionDiv');
+		for (const r of result) {
+			const checkbox = document.createElement('input');
+			checkbox.type = "checkbox";
+			checkbox.value = r.id;
+			// checkbox.name = r.name;
+			checkbox.id = "reg_" + r.id;
+			checkbox.checked = true;
+			// option.innerHTML = r.name;
+			const label = document.createElement('label');
+			label.htmlFor = checkbox.id;
+			label.appendChild(document.createTextNode(r.name));
+
+			regions.push(checkbox);
+
+			regionDiv.append(checkbox)
+			regionDiv.append(label)
+		}
+
+	}
+
+	function onError(e) {
+		const p = document.createElement('p');
+		p.innerHTML = equalss + '<br><br>' + e + '<br><br>' + equalss;
+		document.getElementById('results').append(p);
+	}
+
+	async function undlos() {
+		const recipeId = document.getElementById('recipes').value;
+		try {
+			const regionsArray = [];
+
+			for (const regionElem of regions) {
+				if (regionElem.checked) regionsArray.push(+regionElem.value);
+			}
+
+			if (!regionsArray.length) return;
+
+			const randMax = +(document.getElementById('maxRandom').value || 3);
+			const randMin = +(document.getElementById('minRandom').value || 0);
+
+			const randomStrength = +(document.getElementById('randomStrength').value || 0);
+
+			const useQualityWeighting = document.getElementById('quality_weights').checked;
+			const mean = +(document.getElementById('meanOutput').innerHTML || 3);
+			const nDeviate = +(document.getElementById('deviateOutput').innerHTML || 2);
+
+			const r = await request({
+				func: 'createRecipe',
+				data: {
+					base: +recipeId,
+					regions: regionsArray,
+					randomStrength,
+					randomRange: {
+						min: randMin,
+						max: randMax,
+					},
+					qualityWeights: {
+						useWeights: useQualityWeighting,
+						mean,
+						nDeviate,
+					}
+				}
+			});
+
+			if (typeof r === 'string') throw new Error(r);
+			addToDoc(r);
+		} catch (e) {
+			onError(e)
+		}
+
+	}
+
+	function addToDoc(result) {
+		const div = document.createElement('div');
+		const p0 = document.createElement('p');
+		p0.innerHTML = equalss;
+		const p1 = document.createElement('p');
+		p1.innerHTML = '' + result.name;
+		const p2 = document.createElement('p');
+		p2.innerHTML = 'Wirkende Zutaten: ' + result.primary.join(', ') + '<br>Sekundaere Zutaten: ' + result.secondary.join(', ');;
+		const p3 = document.createElement('p');
+		p3.innerHTML = `Basis Qualitaet:  ${result.class}(${result.potency})<br>  Qualitaet nach Zufallswurf: ${result.adjustedClass}(${result.adjustedPotency})`;
+		div.append(p0);
+		div.append(p1);
+		div.append(p2);
+		div.append(p3);
+		document.getElementById('results').append(div);
+	}
+
+	async function doStuff() {
+		await new Promise(r => {
+			socket.on('connect', () => {
+				console.log('connect');
+				r();
+			});
+		});
+
+		await getRegions();
+		await getRecipes();
+
+		const button = document.getElementById('undlos');
+		button.addEventListener('click', undlos);
+	}
+
+	doStuff()
+</script>
+
+<script>
+	const maxValue = 100;
+	const max = 6
+	function getPlotData() {
+		const steps = 100;
+		const meanValue = document.getElementById('mean').value;
+		const deviateValue = document.getElementById('deviate').value;
+
+		const mean = 2 * max * meanValue / maxValue - 3;
+		const nDeviate = 4 * deviateValue / maxValue;
+		const xData = [];
+		const yData = [];
+		for (let i = 0; i <= steps; i++) {
+			const x = max * i / steps;
+			const y = Math.E ** (-0.5 * ((x - mean) / nDeviate) ** 2);
+			xData.push(x);
+			yData.push(y);
+		}
+		return { x: xData, y: yData };
+	}
+	async function updatePlot() {
+		const data = getPlotData();
+		const plot = document.getElementById('weights_plot');
+
+		Plotly.newPlot(plot, [data], {
+			margin: { t: 0 },
+			yaxis: { range: [0, 1], title: 'Gewicht' },
+			xaxis: { title: 'Potenz' },
+		});
+	}
+	function updateSliderOutput() {
+		const meanValue = +document.getElementById('mean').value;
+		document.getElementById('meanOutput').innerHTML = 2 * max * meanValue / maxValue - 3;
+		const deviateValue = +document.getElementById('deviate').value;
+		document.getElementById('deviateOutput').innerHTML = 4 * deviateValue / maxValue;
+	}
+	function onQualityWeightCheckbox() {
+		// const checked = document.getElementById('quality_weights').checked ? 'true' : 'false';
+		const checked = document.getElementById('quality_weights').checked;
+
+		const meanRange = document.getElementById('mean');
+		const deviateRange = document.getElementById('deviate');
+		const plot = document.getElementById('weights_plot');
+		if (checked) {
+			meanRange.removeAttribute('disabled');
+			deviateRange.removeAttribute('disabled');
+			plot.removeAttribute('hidden');
+		} else {
+			meanRange.setAttribute('disabled', '');
+			deviateRange.setAttribute('disabled', '');
+			plot.setAttribute('hidden', true);
+		}
+	}
+
+	function clearResults() {
+		const results = document.getElementById('results');
+		while (results.firstChild) {
+			results.removeChild(results.firstChild);
+		}
+	}
+
+	document.addEventListener("DOMContentLoaded", () => {
+		updatePlot();
+		updateSliderOutput();
+		onQualityWeightCheckbox();
+
+		const meanRange = document.getElementById('mean');
+		meanRange.addEventListener('change', updatePlot);
+		meanRange.addEventListener('input', updateSliderOutput);
+
+		const deviateRange = document.getElementById('deviate');
+		deviateRange.addEventListener('change', updatePlot);
+		deviateRange.addEventListener('input', updateSliderOutput);
+
+		const checkbox = document.getElementById('quality_weights');
+		checkbox.addEventListener('input', onQualityWeightCheckbox);
+
+		const clear = document.getElementById('clear');
+		clear.addEventListener('click', clearResults);
+	});
+
+</script>
+
+<script>
+	// class Ws {
+	// 	constructor(socket) {
+	// 		this.requests = new Map();
+	// 		this.socket = socket;
+
+	// 		socket.on('response', res => {
+	// 			const msgId = res.msgId;
+	// 			const deferedPromiseObject = this.requests.get(msgId);
+	// 			if (!deferedPromiseObject) return;
+	// 			deferedPromiseObject.r(res.d);
+	// 		});
+	// 	}
+	// 	async request(req) {
+	// 		req.msgId = msgId++;
+
+	// 		const p = new Promise((r, j) => {
+	// 			this.requests.set(req.msgId, { r, j });
+	// 		});
+
+	// 		socket.emit('request', req);
+
+	// 		return p;
+	// 	}
+	// }
+</script>
+<div>
+	<!-- <embed type="text/html" id="zutatenContainer" src="./Zutaten.txt"></object> 
+	<object id="baseContainer" data="./base.json"></object>  -->
+	<div id="regionDiv">
+
+	</div>
+	<label for="minRandom">minimale anzahl zufaelling hinzugefuegter zutaten</label>
+	<input type="number" id="minRandom" name="minRandom" value="0"><br><br>
+	<label for="maxRandom">maximale anzahl zufaelling hinzugefuegter zutaten</label>
+	<input type="number" id="maxRandom" name="maxRandom" value="3"><br><br>
+	<label for="randomStrength">zufallsstaerke</label>
+	<input type="number" id="randomStrength" name="randomStrength" value="0.25"><br><br>
+
+	<input type="checkbox" id="quality_weights" name="quality_weights" value="">
+	<label for="quality_weights">Gewichte nach Potenz</label><br>
+	<div class="slidecontainer">
+		<input type="range" min="0" max="100" value="50" class="slider" id="mean">
+		<span id="meanOutput">50</span>
+		<label for="mean">Mittelwert</label>
+	</div>
+	<div class="slidecontainer">
+		<input type="range" min="1" max="100" value="50" class="slider" id="deviate">
+		<span id="deviateOutput">50</span>
+		<label for="deviate">Standardabweichung</label>
+	</div>
+	<br>
+	<div id="weights_plot" style="position: absolute; top:20px; left:700px; width:1000px; height: 500px;"></div>
+	<label for="recipes">Rezept:</label>
+	<select name="recipes" id="recipes">
+	</select>
+
+	<button type="button" id="undlos">und los</button><br>
+	<button type="button" id="clear">loeschen</button><br><br>
+	<!-- <label for="baseRecipe">Basis</label><br> -->
+	<!-- <textarea id="baseRecipe" name="baseRecipe"
+		style="position: absolute; top:10px; left:800px; width:300px; height: 500px;"></textarea><br><br>
+	<br> -->
+</div>
+
+
+
+<!-- <script src="Zutaten.js" charset="UTF-8"></script>
+<script src="base.js" charset="UTF-8"></script>
+<script src="stuff.js" charset="UTF-8"></script> -->
+
+<html>
+
+<body>
+	<div id="results">
+
+	</div>
+</body>
+
+</html>

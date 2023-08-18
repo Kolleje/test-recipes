@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<!-- <div  style="display:none"> -->
+
+<head>
+	<script src="https://cdn.plot.ly/plotly-2.25.2.min.js" charset="utf-8"></script>
+
+</head>
+<script>
+	const maxValue = 100;
+	const max = 6
+	function getPlotData() {
+		const steps = 100;
+		const meanValue = document.getElementById('mean').value;
+		const deviateValue = document.getElementById('deviate').value;
+
+		const mean = 2 * max * meanValue / maxValue - 3;
+		const nDeviate = 4 * deviateValue / maxValue;
+		const xData = [];
+		const yData = [];
+		for (let i = 0; i <= steps; i++) {
+			const x = max * i / steps;
+			const y = Math.E ** (-0.5 * ((x - mean) / nDeviate) ** 2);
+			xData.push(x);
+			yData.push(y);
+		}
+		return { x: xData, y: yData };
+	}
+	async function updatePlot() {
+		const data = getPlotData();
+		const plot = document.getElementById('weights_plot');
+
+		Plotly.newPlot(plot, [data], {
+			margin: { t: 0 },
+			yaxis: {range: [0, 1]}
+		});
+	}
+	function updateSliderOutput(){
+		const meanValue = +document.getElementById('mean').value;
+		document.getElementById('meanOutput').innerHTML = 2 * max * meanValue / maxValue - 3;
+		const deviateValue = +document.getElementById('deviate').value;
+		document.getElementById('deviateOutput').innerHTML = 4 * deviateValue / maxValue;
+	}
+	document.addEventListener("DOMContentLoaded", () => {
+		updatePlot();
+		updateSliderOutput();
+		const meanRange = document.getElementById('mean');
+		meanRange.addEventListener('change', updatePlot)
+		meanRange.addEventListener('input', updateSliderOutput)
+		const deviateRange = document.getElementById('deviate');
+		deviateRange.addEventListener('change', updatePlot)
+		deviateRange.addEventListener('input', updateSliderOutput)
+	});
+
+</script>
+
+<body>
+	<br>
+	<div class="slidecontainer">
+		<input type="range" min="0" max="100" value="50" class="slider" id="mean">
+		<label for="mean">Mittelwert</label><br>
+		<span id="meanOutput">50</span>
+	</div>
+	<div class="slidecontainer">
+		<input type="range" min="1" max="100" value="50" class="slider" id="deviate">
+		<label for="deviate">Standardabweichung</label><br>
+		<span id="deviateOutput">50</span>
+	</div>
+	<br><br><br>
+	<div id="weights_plot" style="width:1500px;height:800px;"></div>
+</body>
+
+</html>
