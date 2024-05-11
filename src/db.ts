@@ -364,7 +364,7 @@ async function init(reset?: boolean) {
 	const query = '!Heilpflanze & ?stärkend'
 	//  !Heilpflanze; ?peraine; 
 
-	// await testRecipes();
+	if (reset) await testRecipes();
 
 	// const res = await getResultSpaceForBaseQuery(query);
 	// const res = await createActualRecipe({
@@ -402,8 +402,8 @@ async function testRecipes() {
 				id: r.id,
 				name: r.name,
 			});
-			// console.log(r)
-			// throw e
+			console.log(r)
+			throw e
 		}
 	}
 	console.log('failed: ' + failed.length);
