@@ -688,6 +688,11 @@ type SimpleAlchemyRecipe = {
 	adjustedClass: string;
 	adjustedSecondary: number;
 	duration: number;
+	baseRecipe: {
+		primaryQuery: string;
+		secondaryQuery: string;
+		tags: string;
+	}
 	// recipe: string;
 }
 
@@ -860,6 +865,11 @@ function toSimpleRecipe(recipe: Recipe, primary: string[], secondary: string[], 
 		class: potToQual(potency),
 		adjustedClass: potToQual(adjustedPotency),
 		duration: getDuration(),
+		baseRecipe: {
+			primaryQuery: recipe.originalQueryPrimary,
+			secondaryQuery: recipe.originalQuerySecondary,
+			tags: recipe.Tags?.map(t=> t.name).join('; '),
+		}
 	};
 }
 

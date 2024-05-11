@@ -116,11 +116,17 @@
 		'<br>Sekundaere Zutaten: ' + result.secondary.join(', ') + 
 		'<br>Freiwillige Zutaten: ' + result.additionalVoluntary.join(', ') + 
 		'<br>Erwuerfelte Zutaten: ' + result.additionalForced.join(', ');
+		const p5 = document.createElement('p');
+		p5.innerHTML = 'Basis Rezept: ' +
+		`<br> Primaer: ${result.baseRecipe.primaryQuery}` +
+		`<br> Sekundaer: ${result.baseRecipe.secondaryQuery}` +
+		`<br> Tags: ${result.baseRecipe.tags}`;
 		div.append(p0);
 		div.append(p1);
 		div.append(p2);
 		div.append(p3);
 		div.append(p4);
+		div.append(p5);
 		document.getElementById('results').append(div);
 	}
 
