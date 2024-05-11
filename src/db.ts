@@ -8,8 +8,8 @@ import {
 import { promises as fs } from 'fs';
 
 const dbfile = './db/db.sqlite';
-const itemImport = './db/Zutaten_final.csv';
-const recipeImport = './db/Tranke_zwischenstand.csv';
+const itemImport = './db/Zutaten_final_2.0.csv';
+const recipeImport = './db/Tranke_final.csv';
 
 const preferredFactor = 10;
 const preciousName = 'wertvoll';
@@ -60,6 +60,8 @@ class Item extends Model<InferAttributes<Item, { omit: 'Tags' | 'Regions' }>, In
 		Tags: Association<Item, Tag>;
 		Regions: Association<Item, Region>;
 	};
+
+	contribution?: number;
 }
 
 class Tag extends Model<
@@ -104,6 +106,8 @@ class Recipe extends Model<
 	declare name: string;
 	declare originalQueryPrimary: string;
 	declare originalQuerySecondary: string;
+	// declare originalQueryTertiary: string;
+	declare complexity: number;
 
 	declare createdAt: CreationOptional<Date>;
 	declare updatedAt: CreationOptional<Date>;
@@ -219,6 +223,14 @@ async function initdb(dbfile: string) {
 				type: new DataTypes.TEXT,
 				allowNull: true,
 			},
+			// originalQueryTertiary: {
+			// 	type: new DataTypes.TEXT,
+			// 	allowNull: true,
+			// },
+			complexity: {
+				type: new DataTypes.INTEGER,
+				allowNull: true,
+			},
 			createdAt: DataTypes.DATE,
 			updatedAt: DataTypes.DATE,
 		},
@@ -251,20 +263,24 @@ async function importRecipesFromFile(file: string) {
 }
 
 async function addRecipeToDb(itemData: string[]) {
-	if (itemData.length < 4) return;
-	if (!itemData[1] && !itemData[1] && !itemData[2] && !itemData[3]) return;
+	if (itemData.length < 5) return;
+	if (!itemData[1] && !itemData[1] && !itemData[2] && !itemData[3] && !itemData[4]) return;
 
 	const name = itemData[0].trim();
 	if (!name) return;
 
 	const primaryQuery = itemData[1].trim();
 	const secondaryQuery = itemData[2].trim();
+	// const tertiaryQuery = itemData[3].trim();
 	const tags = toObjectArray(itemData[3]);
+	const complexity = parseInt(itemData[4].trim());
 
 	const recipe = await Recipe.create({
 		name,
 		originalQueryPrimary: primaryQuery,
 		originalQuerySecondary: secondaryQuery,
+		// originalQueryTertiary: tertiaryQuery,
+		complexity,
 	});
 
 	for (const tag of tags) {
@@ -348,24 +364,51 @@ async function init(reset?: boolean) {
 	const query = '!Heilpflanze & ?stärkend'
 	//  !Heilpflanze; ?peraine; 
 
+	// await testRecipes();
 
 	// const res = await getResultSpaceForBaseQuery(query);
-	const res = await createActualRecipe({
-		base: 47,
-		randomStrength: 0.25,
-		regions: [0, 1, 2, 3],
-		randomRange: {
-			min: 0,
-			max: 3,
-		},
-	});
+	// const res = await createActualRecipe({
+	// 	base: 47,
+	// 	randomStrength: 0.25,
+	// 	regions: [0, 1, 2, 3],
+	// 	randomRange: {
+	// 		min: 0,
+	// 		max: 3,
+	// 	},
+	// });
 	// const parsed = parseQuery('');
 	// console.log(parsed)
 	// const res = await getResultSpaceForQuery(parsed, [0,1,3,]);
 	// const test = await getItemResultSpace();
-	console.log(res)
+	// console.log(res)
 }
 
+async function testRecipes() {
+	const recipes = await Recipe.findAll();
+	const failed: { id: number, name: string }[] = [];
+	for (const r of recipes) {
+		try {
+			const res = await createActualRecipe({
+				base: r.id,
+				randomStrength: 0.25,
+				regions: [0, 1, 2, 3],
+				randomRange: {
+					min: 0,
+					max: 3,
+				},
+			});
+		} catch (e) {
+			failed.push({
+				id: r.id,
+				name: r.name,
+			});
+			// console.log(r)
+			// throw e
+		}
+	}
+	console.log('failed: ' + failed.length);
+	console.log(failed);
+}
 
 // export async function getItemResultSpace(tagQuery?: WhereOptions<InferAttributes<Tag>>, reqgionQuery?: WhereOptions<InferAttributes<Region>>) {
 // 	// const results = await Item.findAll({
@@ -401,30 +444,38 @@ export async function getAllItems() {
 	return Item.findAll();
 }
 
-async function getItemsForQuery(query: string, createRecipeOptions: CreateRecipeOptions, preferred: number[] = []): Promise<Item[]> {
+async function getItemsForQuery(query: string, createRecipeOptions: CreateRecipeOptions, preferred: number[] = [], useExtraWeight?: boolean, minPotency?: number): Promise<Item[]> {
 	const result: Item[] = [];
 	if (!query) return result;
 	const queryParts = query.split(';').map(q => q.trim());
 	for (const part of queryParts) {
 		if (!part) continue;
-		result.push(await getItemForQuery(part, createRecipeOptions, preferred));
+		result.push(await getItemForQuery(part, createRecipeOptions, preferred, useExtraWeight));
 	}
 	return result;
 }
 
-async function getItemForQuery(query: string, createRecipeOptions: CreateRecipeOptions, preferred: number[] = []) {
-	const resultSpace = await getResultSpaceForBaseQuery(query, createRecipeOptions.regions);
+async function getItemForQuery(query: string, createRecipeOptions: CreateRecipeOptions, preferredTags: number[] = [], useExtraWeight?: boolean, minPotency?: number) {
+	const resultSpace = await getResultSpaceForBaseQuery(query, createRecipeOptions.regions, minPotency);
 	if (!resultSpace.length) {
 		throw new Error(`empty result space for query ${query}, regions: ${createRecipeOptions.regions}`);
 	}
+
+	// console.log('getItemForQuery', {useExtraWeight, query, preferred: preferredTags})
+
+	let localPreferred = preferredFactor;
+
+	if (useExtraWeight) localPreferred = localPreferred * preferredFactor;
 	const weights = resultSpace.map(item => {
 		let weight = 1000;
 
 		let sumPreferredFactor = 1;
 
-		if (item.Tags){
+		if (item.Tags) {
+			// console.log('tags', item.Tags)
 			for (const tag of item.Tags) {
-				if (preferred.indexOf(tag.id) > -1) sumPreferredFactor = sumPreferredFactor + preferredFactor;
+				// if (preferred.indexOf(tag.id) > -1) sumPreferredFactor = sumPreferredFactor + preferredFactor;
+				if (preferredTags.indexOf(tag.id) > -1) sumPreferredFactor = localPreferred;
 				if (tag.name === preciousName) weight = weight * preciousFactor;
 			}
 		}
@@ -433,7 +484,7 @@ async function getItemForQuery(query: string, createRecipeOptions: CreateRecipeO
 
 		weight = weight * item.availability;
 
-		if (createRecipeOptions.qualityWeights?.useWeights){
+		if (createRecipeOptions.qualityWeights?.useWeights) {
 			weight = weight * getWeightByPotency(item.potency, createRecipeOptions.qualityWeights.mean, createRecipeOptions.qualityWeights.nDeviate);
 		}
 
@@ -450,12 +501,13 @@ async function getItemForQuery(query: string, createRecipeOptions: CreateRecipeO
 		currentWeight = currentWeight + weights[index];
 		if (roll < currentWeight) {
 			// console.log({ roll, totalWeight, index, size: resultSpace.length })
+			// console.log('item tags:' +  resultSpace[index].Tags.map(t=>t.id));
 			return resultSpace[index];
 		}
 	}
 }
 
-function getWeightByPotency(potency: number, mean: number, nDeviate: number){
+function getWeightByPotency(potency: number, mean: number, nDeviate: number) {
 	return Math.E ** (-0.5 * ((potency - mean) / nDeviate) ** 2);
 }
 
@@ -490,12 +542,28 @@ function parseQuery(query: string) {
 	return result;
 }
 
-async function getResultSpaceForBaseQuery(query: string, regions: number[] = []): Promise<Item[]> {
+async function getCompleteResultSpaceForQuery(query: string, createRecipeOptions: CreateRecipeOptions, minPotency: number = 0): Promise<number[]> {
+	let result: number[] = [];
+	if (!query) return result;
+	const queryParts = query.split(';').map(q => q.trim());
+	for (const part of queryParts) {
+		if (!part) continue;
+		const resultSpace = (await getResultSpaceForBaseQuery(part, createRecipeOptions.regions, minPotency)).map(item => item.id);
+		result = result.concat(resultSpace);
+	}
+	return result;
+
+}
+
+async function getResultSpaceForBaseQuery(query: string, regions: number[] = [], minPotency: number = 0): Promise<Item[]> {
 	const parsedQuery = parseQuery(query);
 	const resultIds = await getResultSpaceForQuery(parsedQuery, regions);
 	return Item.findAll({
 		where: {
-			id: resultIds
+			id: resultIds,
+			potency: {
+				[Op.gte]: minPotency
+			}
 		},
 		include: [Tag, Region]
 	});
@@ -597,7 +665,7 @@ type CreateRecipeOptions = {
 	qualityWeights?: {
 		useWeights: boolean;
 		mean: number;
-		nDeviate: number; 
+		nDeviate: number;
 	}
 }
 
@@ -605,67 +673,158 @@ type SimpleAlchemyRecipe = {
 	name: string;
 	primary: string[];
 	secondary: string[];
+	complexity: number;
+	complexityAdjustment: number;
+	additionalVoluntary: string[];
+	additionalForced: string[];
+	orderedItems: {
+		name: string;
+		contribution: number;
+		potency: number;
+	}[];
 	potency: number;
 	adjustedPotency: number;
 	class: string;
 	adjustedClass: string;
+	adjustedSecondary: number;
+	duration: number;
+	// recipe: string;
 }
 
 async function createActualRecipe(createRecipeOptions: CreateRecipeOptions) {
 	const recipe = await Recipe.findOne({ where: { id: createRecipeOptions.base }, include: [Tag] });
-	const preferred = recipe.Tags.map(t => t.id);
+	const preferredTags = recipe.Tags.map(t => t.id);
 
-	const primary = await getItemsForQuery(recipe.originalQueryPrimary, createRecipeOptions, preferred);
-	const secondary = await getItemsForQuery(recipe.originalQuerySecondary, createRecipeOptions, preferred);
-	await addRandomIngs(secondary, createRecipeOptions, preferred);
+	const primary = await getItemsForQuery(recipe.originalQueryPrimary, createRecipeOptions, []);
+	const secondary = await getItemsForQuery(recipe.originalQuerySecondary, createRecipeOptions, preferredTags);
+
+	const additionalVoluntary: Item[] = [];
 
 	const primaryPotency = getPrimaryPotency(primary);
-	const secondaryPotency = getSecondaryPotency(secondary);
 
-	const potency = primaryPotency * secondaryPotency;
+	await addRandomIngs(additionalVoluntary, createRecipeOptions, preferredTags);
 
-	let adjustedPotency = potency;
+	const additionalForced: Item[] = [];
+	await addRandomIngsForced(additionalForced, createRecipeOptions, [], primaryPotency);
 
-	if (createRecipeOptions.randomStrength > 0) {
-		const mod = getBiasedMod(primary.length + secondary.length, createRecipeOptions.randomStrength);
-		if (mod > 0) adjustedPotency = adjustedPotency * (1 + mod);
-		else adjustedPotency = adjustedPotency / (1 - mod);
-	}
+	const resultSpace = await getCompleteResultSpaceForQuery(recipe.originalQuerySecondary, createRecipeOptions);
 
-	return toSimpleRecipe(recipe.name, primary.map(i => i.name), secondary.map(i => i.name), potency, adjustedPotency)
+	const combinedSecondary = secondary.concat(additionalVoluntary).concat(additionalForced);
+
+	const secondaryPotency = getSecondaryPotency(combinedSecondary, preferredTags, resultSpace);
+
+	const adjustedPotency = getAdjustedPotency(primaryPotency, primary.length + secondary.length, createRecipeOptions.randomStrength);
+	const adjustedSecondary = getAdjustedPotency(secondaryPotency, secondary.length, createRecipeOptions.randomStrength);
+
+	return toSimpleRecipe(recipe, primary.map(i => i.name), secondary.map(i => i.name), additionalVoluntary.map(i => i.name), additionalForced.map(i => i.name), combinedSecondary, primaryPotency, adjustedPotency, secondaryPotency, adjustedSecondary)
 }
 
-async function addRandomIngs(secondary: Item[], createRecipeOptions: CreateRecipeOptions, preferred: number[] = []) {
+function getAdjustedPotency(potency: number, count: number, randomStrength: number) {
+	if (randomStrength > 0) {
+		const mod = getBiasedMod(count, randomStrength);
+		if (mod > 0) potency = potency * (1 + mod);
+		else potency = potency / (1 - mod);
+	}
+	return potency;
+}
+
+async function addRandomIngs(secondary: Item[], createRecipeOptions: CreateRecipeOptions, preferredTags: number[] = []) {
 	const max = createRecipeOptions.randomRange?.max || 3;
 	const min = createRecipeOptions.randomRange?.min || 0;
 	const count = Math.floor(Math.random() * (max - min + 1));
 	let i = 0;
 	while (i < count) {
-		const item = await getItemForQuery('', createRecipeOptions, preferred);
+		const item = await getItemForQuery('', createRecipeOptions, preferredTags, true, 1);
 		secondary.push(item);
 		i++
 	}
 }
 
+async function addRandomIngsForced(secondary: Item[], createRecipeOptions: CreateRecipeOptions, preferred: number[] = [], primaryPotency: number) {
+	let t = 1;
+	let count = 0;
+	while (t <= primaryPotency) {
+		t++;
+		if (Math.random() < 1 / 3) count++;
+	}
+	// const max = createRecipeOptions.randomRange?.max || 3;
+	// const min = createRecipeOptions.randomRange?.min || 0;
+	// const count = Math.floor(Math.random() * (max - min + 1));
+	let i = 0;
+	while (i < count) {
+		const item = await getItemForQuery('', createRecipeOptions, preferred, false, 0);
+		secondary.push(item);
+		i++
+	}
+}
+
+// function getPrimaryPotency(primary: Item[]) {
+// 	let potency = 0;
+// 	let factor = 1;
+// 	for (const item of primary) {
+// 		potency = potency + factor * item.potency;
+// 		factor = factor / 2;
+// 	}
+// 	return potency;
+// }
+
+
 function getPrimaryPotency(primary: Item[]) {
 	let potency = 0;
-	let factor = 1;
 	for (const item of primary) {
-		potency = potency + factor * item.potency;
-		factor = factor / 2;
+		potency += item.potency;
 	}
+	return potency / primary.length;
+}
+
+// function getSecondaryPotency(secondary: Item[]) {
+// 	let potency = 0;
+// 	for (const item of secondary) {
+// 		potency = potency + item.potency;
+// 	}
+// 	potency = secondary.length ? potency / secondary.length : 0;
+// 	potency = potency + 1;
+// 	potency = Math.sqrt(potency);
+// 	return potency;
+// }
+
+function getSecondaryPotency(secondary: Item[], preferredTags: number[], secondaryResultSpace: number[]) {
+
+	secondary.sort((a, b) => {
+		let bPotency = b.potency;
+		if (secondaryResultSpace.includes(b.id) || ItemHasTagInList(b, preferredTags)) {
+			bPotency = bPotency * 10;
+		}
+
+		let aPotency = a.potency;
+		if (secondaryResultSpace.includes(a.id) || ItemHasTagInList(a, preferredTags)) {
+			aPotency = aPotency * 10;
+		}
+		return bPotency - aPotency
+	});
+
+	let potency = 0;
+	let fac = 1;
+	for (const item of secondary) {
+		if (secondaryResultSpace.includes(item.id) || ItemHasTagInList(item, preferredTags)) {
+			const contribution = Math.round(item.potency * fac);
+			potency = potency + contribution;
+			item.contribution = contribution
+			fac = fac / 2;
+		} else {
+			item.contribution = 0;
+		}
+	}
+
 	return potency;
 }
 
-function getSecondaryPotency(secondary: Item[]) {
-	let potency = 0;
-	for (const item of secondary) {
-		potency = potency + item.potency;
+function ItemHasTagInList(item: Item, list: number[]) {
+	if (!item?.Tags || !list) return false;
+	for (const tag of item.Tags) {
+		if (list.includes(tag.id)) return true;
 	}
-	potency = secondary.length ? potency / secondary.length : 0;
-	potency = potency + 1;
-	potency = Math.sqrt(potency);
-	return potency;
+	return false;
 }
 
 function getBiasedMod(count: number, randomStrength: number) {
@@ -679,48 +838,89 @@ function getBiasedMod(count: number, randomStrength: number) {
 	return val;
 }
 
-function toSimpleRecipe(name: string, primary: string[], secondary: string[], potency: number, adjustedPotency: number): SimpleAlchemyRecipe {
+function toSimpleRecipe(recipe: Recipe, primary: string[], secondary: string[], additionalVoluntary: string[], additionalForced: string[], orderedItems: Item[], potency: number, adjustedPotency: number, secondaryPotency: number, adjustedSecondary: number): SimpleAlchemyRecipe {
 	return {
-		name,
+		name: recipe.name,
+		complexity: recipe.complexity,
+		complexityAdjustment: secondaryPotency,
 		primary,
 		secondary,
+		additionalVoluntary,
+		additionalForced,
+		orderedItems: orderedItems.map(item => {
+			return {
+				name: item.name,
+				contribution: item.contribution,
+				potency: item.potency,
+			}
+		}),
 		potency,
 		adjustedPotency,
+		adjustedSecondary,
 		class: potToQual(potency),
 		adjustedClass: potToQual(adjustedPotency),
+		duration: getDuration(),
 	};
 }
 
 const levels = ['A', 'B', 'C', 'D', 'E', 'F'];
 function potToQual(potency: number) {
-	if (potency >= 12) return 'F';
-	return levels[Math.floor(potency / 2.4)]
+	potency = potency - 1;
+	if (potency >= 5) return 'F';
+	if (potency < -0.5) return 'M';
+	return levels[Math.round(potency)];
 }
 
-export async function getRecipes(){
-	return (await Recipe.findAll()).map(({id, name}) => {
+export async function getRecipes() {
+	return (await Recipe.findAll()).map(({ id, name }) => {
 		return {
 			id, name
 		};
 	});
 }
 
-export async function getRegions(){
-	return (await Region.findAll()).map(({id, name}) => {
+export async function getRegions() {
+	return (await Region.findAll()).map(({ id, name }) => {
 		return {
 			id, name
 		};
 	});
 }
 
-export async function createRecipe(data){
-	try{
-		console.log('createRecipe', data)
+export async function createRecipe(data) {
+	try {
 		const result = await createActualRecipe(data);
-		console.log(result);
+		// console.log(result);
 		return result;
-	}catch(e){
+	} catch (e) {
 		console.log(e)
-		return ''+e;
+		console.log('createRecipe', data)
+		return '' + e;
 	}
+}
+
+function getDuration() {
+	const durations = {
+		1: '1/4 ZE',
+		2: '1/2 ZE',
+		3: '1 ZE',
+		4: '1 ZE',
+		5: '1 ZE',
+		6: '2 ZE',
+		7: '2 ZE',
+		8: '2 ZE',
+		9: '3 ZE',
+		10: '3 ZE',
+		11: '4 ZE',
+		12: 'eine Woche',
+	}
+
+	const numbers = [getRandomNForDuration(),getRandomNForDuration(),getRandomNForDuration()];
+	numbers.sort();
+	const result = Math.floor((numbers[1] + numbers[2]) / 2);
+	return durations[result];
+}
+
+function getRandomNForDuration(){
+	return Math.random()*12 + 1;
 }

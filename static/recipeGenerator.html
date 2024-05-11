@@ -104,15 +104,23 @@
 		const p0 = document.createElement('p');
 		p0.innerHTML = equalss;
 		const p1 = document.createElement('p');
-		p1.innerHTML = '' + result.name;
+		p1.innerHTML = '' + result.name + 
+		`<br>Komplexitaet: ${result.complexity} - ${result.complexityAdjustment} (${result.adjustedSecondary})` +
+		`<br>Herstellungsdauer: ${result.duration}`;
 		const p2 = document.createElement('p');
-		p2.innerHTML = 'Wirkende Zutaten: ' + result.primary.join(', ') + '<br>Sekundaere Zutaten: ' + result.secondary.join(', ');;
+		p2.innerHTML = 'Rezept: ' + result.primary.join(', ') + '<br>Sekundaere Zutaten: ' + result.orderedItems.map(item => `${item.name} (${item.contribution}/${item.potency})`).join(', ');
 		const p3 = document.createElement('p');
 		p3.innerHTML = `Basis Qualitaet:  ${result.class}(${result.potency})<br>  Qualitaet nach Zufallswurf: ${result.adjustedClass}(${result.adjustedPotency})`;
+		const p4 = document.createElement('p');
+		p4.innerHTML = 'Primaere Zutaten: ' + result.primary.join(', ') +
+		'<br>Sekundaere Zutaten: ' + result.secondary.join(', ') + 
+		'<br>Freiwillige Zutaten: ' + result.additionalVoluntary.join(', ') + 
+		'<br>Erwuerfelte Zutaten: ' + result.additionalForced.join(', ');
 		div.append(p0);
 		div.append(p1);
 		div.append(p2);
 		div.append(p3);
+		div.append(p4);
 		document.getElementById('results').append(div);
 	}
 
