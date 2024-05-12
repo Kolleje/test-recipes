@@ -577,7 +577,14 @@ async function getResultSpaceForQuery(query: ParsedQuery, regions: number[] = []
 }
 
 async function resolveSingle(q: string, regions: number[] = []): Promise<number[]> {
-	if (!q) return (await Item.findAll()).map(item => item.id);
+	if (!q) return (await Item.findAll({
+		include: [{
+			model: Region,
+			where: {
+				id: regions,
+			}
+		}]
+	})).map(item => item.id);
 	const type = q[0];
 	if (type === '!' || type === '?') {
 		const name = q.slice(1);
@@ -868,7 +875,7 @@ function toSimpleRecipe(recipe: Recipe, primary: string[], secondary: string[], 
 		baseRecipe: {
 			primaryQuery: recipe.originalQueryPrimary,
 			secondaryQuery: recipe.originalQuerySecondary,
-			tags: recipe.Tags?.map(t=> t.name).join('; '),
+			tags: recipe.Tags?.map(t => t.name).join('; '),
 		}
 	};
 }
@@ -925,12 +932,12 @@ function getDuration() {
 		12: 'eine Woche',
 	}
 
-	const numbers = [getRandomNForDuration(),getRandomNForDuration(),getRandomNForDuration()];
+	const numbers = [getRandomNForDuration(), getRandomNForDuration(), getRandomNForDuration()];
 	numbers.sort();
 	const result = Math.floor((numbers[1] + numbers[2]) / 2);
 	return durations[result];
 }
 
-function getRandomNForDuration(){
-	return Math.random()*12 + 1;
+function getRandomNForDuration() {
+	return Math.random() * 12 + 1;
 }
