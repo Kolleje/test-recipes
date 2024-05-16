@@ -695,6 +695,10 @@ type SimpleAlchemyRecipe = {
 	adjustedClass: string;
 	adjustedSecondary: number;
 	duration: number;
+	recipeComplexity: number;
+	recipeComplexityWithRandom: number;
+	recipeDifficulty: number;
+	recipeDifficultyWithRandom: number;
 	baseRecipe: {
 		primaryQuery: string;
 		secondaryQuery: string;
@@ -851,6 +855,10 @@ function getBiasedMod(count: number, randomStrength: number) {
 }
 
 function toSimpleRecipe(recipe: Recipe, primary: string[], secondary: string[], additionalVoluntary: string[], additionalForced: string[], orderedItems: Item[], potency: number, adjustedPotency: number, secondaryPotency: number, adjustedSecondary: number): SimpleAlchemyRecipe {
+	const recipeComplexity = recipe.complexity - secondaryPotency;
+	const recipeComplexityWithRandom = recipe.complexity - adjustedSecondary;
+	const recipeDifficulty = recipeComplexity + Math.max(1, recipeComplexity/5) * Math.round(potency);
+	const recipeDifficultyWithRandom = recipeComplexity + Math.max(1, Math.round(recipeComplexityWithRandom)/5) * Math.round(adjustedPotency);
 	return {
 		name: recipe.name,
 		complexity: recipe.complexity,
@@ -872,6 +880,10 @@ function toSimpleRecipe(recipe: Recipe, primary: string[], secondary: string[], 
 		class: potToQual(potency),
 		adjustedClass: potToQual(adjustedPotency),
 		duration: getDuration(),
+		recipeComplexity,
+		recipeComplexityWithRandom,
+		recipeDifficulty,
+		recipeDifficultyWithRandom,
 		baseRecipe: {
 			primaryQuery: recipe.originalQueryPrimary,
 			secondaryQuery: recipe.originalQuerySecondary,

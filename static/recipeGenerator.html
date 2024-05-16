@@ -105,7 +105,8 @@
 		p0.innerHTML = equalss;
 		const p1 = document.createElement('p');
 		p1.innerHTML = '' + result.name + 
-		`<br>Komplexitaet: ${result.complexity} - ${result.complexityAdjustment} (${result.adjustedSecondary})` +
+		`<br>Komplexitaet: ${result.complexity} - ${result.complexityAdjustment}  = ${result.recipeComplexity} (${result.recipeComplexityWithRandom})` +
+		`<br>Erschwernis: ${result.recipeDifficulty} (${result.recipeDifficultyWithRandom})` +
 		`<br>Herstellungsdauer: ${result.duration}`;
 		const p2 = document.createElement('p');
 		p2.innerHTML = 'Rezept: ' + result.primary.join(', ') + '<br>Sekundaere Zutaten: ' + result.orderedItems.map(item => `${item.name} (${item.contribution}/${item.potency})`).join(', ');
